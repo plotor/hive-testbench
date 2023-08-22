@@ -1,7 +1,7 @@
 #!/bin/bash
 
 function usage {
-    echo "Usage: [FORMAT=parquet] tpcds-setup.sh <scale_factor> <password> [<temp_directory>]"
+    echo "Usage: [FORMAT=parquet] tpcds-setup.sh <scale_factor> <user> <password> [<temp_directory>]"
     exit 1
 }
 
@@ -40,8 +40,9 @@ if [ "X$DEBUG_SCRIPT" != "X" ]; then
 fi
 
 SCALE=$1
-PASSWD=$2
-DIR=$3
+USER=$2
+PASSWD=$3
+DIR=$4
 # Sanity checking.
 if [ X"$SCALE" = "X" ]; then
     usage
@@ -50,6 +51,10 @@ fi
 if [ $SCALE -eq 1 ]; then
     echo "Scale factor must be greater than 1"
     exit 1
+fi
+
+if [ X"$USER" = "X" ]; then
+  usage
 fi
 
 if [ X"$PASSWD" = "X" ]; then
@@ -77,7 +82,7 @@ hadoop fs -chmod -R 777  ${DIR}/${SCALE}
 
 echo "TPC-DS text data generation complete."
 
-HIVE="beeline -n hive -p $PASSWD -u 'jdbc:hive2://localhost:2181/;serviceDiscoveryMode=zooKeeper;zooKeeperNamespace=hiveserver2?tez.queue.name=default' --hiveconf hive.tez.container.size=12200"
+HIVE="beeline -n $USER -p $PASSWD -u 'jdbc:hive2://localhost:2181/;serviceDiscoveryMode=zooKeeper;zooKeeperNamespace=hiveserver2?tez.queue.name=default' --hiveconf hive.tez.container.size=12200"
 
 # Create the text/flat tables as external tables. These will be later be converted to ORCFile.
 echo "Loading text data into external tables."
@@ -107,7 +112,7 @@ for t in ${DIMS}
 do
     COMMAND="$HIVE -i settings/load-partitioned.sql -f ddl-tpcds/bin_partitioned/${t}.sql \
         --hivevar DB=${DATABASE} --hivevar SOURCE=tpcds_text_${SCALE} \
-            --hivevar SCALE=${SCALE} \
+        --hivevar SCALE=${SCALE} \
         --hivevar REDUCERS=${REDUCERS} \
         --hivevar FILE=${FORMAT}"
     echo -e "${t}:\n\t@$COMMAND $SILENCE && echo 'Optimizing table $t ($i/$total).'" >> $LOAD_FILE
@@ -118,7 +123,7 @@ for t in ${FACTS}
 do
     COMMAND="$HIVE -i settings/load-partitioned.sql -f ddl-tpcds/bin_partitioned/${t}.sql \
         --hivevar DB=${DATABASE} \
-            --hivevar SCALE=${SCALE} \
+        --hivevar SCALE=${SCALE} \
         --hivevar SOURCE=tpcds_text_${SCALE} --hivevar BUCKETS=${BUCKETS} \
         --hivevar RETURN_BUCKETS=${RETURN_BUCKETS} --hivevar REDUCERS=${REDUCERS} --hivevar FILE=${FORMAT}"
     echo -e "${t}:\n\t@$COMMAND $SILENCE && echo 'Optimizing table $t ($i/$total).'" >> $LOAD_FILE
